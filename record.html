@@ -2,51 +2,35 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>학교생활기록</title>
+<title>학교생활기록부</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- CSP(완화): inline 스크립트/스타일 허용, zip.js CDN 허용 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'">
-<!-- zip.js(no-worker) for password-protected ZIP -->
-<script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.41/dist/zip-no-worker.min.js"></script>
 <style>
 body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#f8fafc;}
 header{padding:12px 20px;background:#1e293b;color:#fff;}
-.banner{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#fffbeb;border-bottom:1px solid #f59e0b;color:#92400e;}
-.banner .note{font-size:12px;opacity:.9;}
-.banner input[type="password"]{padding:6px 8px;border:1px solid #f59e0b;border-radius:4px;}
-.banner button{padding:6px 10px;border:1px solid #f59e0b;background:#fef3c7;border-radius:4px;cursor:pointer;}
-.banner .status{font-size:12px;background:#f59e0b;color:#fff;border-radius:999px;padding:2px 8px;margin-left:8px;}
 main{padding:16px;max-width:900px;margin:auto;}
-h2{margin-top:24px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;font-size:18px;}
+h2{margin-top:32px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;font-size:18px;}
 form section{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
 label{display:flex;flex-direction:column;font-size:13px;color:#334155;gap:4px;}
 input,textarea,select{padding:6px 8px;font-size:14px;border:1px solid #cbd5e1;border-radius:4px;background:#fff;}
 textarea{min-height:80px;resize:vertical;}
-#actions{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0;}
+#actions{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0;}
 button{cursor:pointer;background:#2563eb;color:#fff;border:0;padding:8px 14px;font-size:14px;border-radius:4px;}
 button.secondary{background:#475569;}
 button.danger{background:#dc2626;}
 .notice{font-size:12px;color:#64748b;margin-top:4px;}
 @media print{
-  header,.banner,#actions,.notice,.importExport{display:none;}
+  header,#actions,.notice,.importExport{display:none;}
   body{background:#fff;}
   input,textarea,select{border:0;}
 }
 </style>
 </head>
 <body>
-<header>학교생활기록</header>
-
-<div class="banner">
-  <strong>보안 안내</strong>
-  <span class="note">이 페이지는 로컬 저장소를 사용합니다. 세션 암호를 설정하면 AES‑GCM으로 암호화 저장됩니다.</span>
-  <input id="pwd" type="password" placeholder="세션 암호 입력" autocomplete="off">
-  <button id="lockBtn" type="button">잠금 설정</button>
-  <span id="encStatus" class="status">암호화: 꺼짐</span>
-</div>
-
+<header>
+  학교생활기록부 입력 시스템
+</header>
 <main>
-  <div class="notice">예시 템플릿입니다. 실제 개인정보 입력 전 내부 보안/저장 정책을 반드시 점검하세요.</div>
+  <div class="notice">예시 템플릿입니다. 실제 개인정보 입력 전 보안/저장 정책을 반드시 점검하세요.</div>
 
   <h2>기본 정보</h2>
   <form id="recordForm">
@@ -56,12 +40,12 @@ button.danger{background:#dc2626;}
       </label>
     </section>
 
-    <h2>특기 사항</h2>
+    <h2>특기사항</h2>
     <section style="grid-template-columns:1fr;">
-      <label>교과 특성
+      <label>교과특성
         <textarea name="subject"></textarea>
       </label>
-      <label>행동 특성
+      <label>행동특성
         <textarea name="behavior"></textarea>
       </label>
       <label>창의적 체험활동(요약)
@@ -84,118 +68,26 @@ button.danger{background:#dc2626;}
     <button id="saveBtn">저장(브라우저)</button>
     <button class="secondary" id="loadBtn">불러오기</button>
     <button class="secondary" id="exportBtn">JSON 내보내기</button>
-    <button class="secondary" id="exportZipBtn">암호 ZIP 내보내기</button>
     <button class="secondary" id="printBtn">인쇄</button>
     <button class="danger" id="clearBtn">로컬 초기화</button>
     <div class="importExport">
-      <input type="file" id="importFile" accept=".json,.zip" style="display:none">
-      <button class="secondary" id="importBtn">가져오기(JSON/ZIP)</button>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+      <button class="secondary" id="importBtn">JSON 가져오기</button>
     </div>
   </div>
 </main>
 
 <script>
-// ========= Config / Keys =========
-const LS_PLAIN_KEY = 'schoolRecordBook_v1';
-const LS_ENC_KEY = 'schoolRecordBook_v1_enc'; // 암호화 저장(JSON 포맷)
+const LS_KEY = 'schoolRecordBook_v1';
 
-// ========= Utilities: base64 ⇄ ArrayBuffer =========
-const enc = new TextEncoder();
-const dec = new TextDecoder();
-function ab2b64(buf){
-  const bytes = new Uint8Array(buf);
-  let bin = ''; for (let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
-function b642ab(b64){
-  const bin = atob(b64); const len = bin.length;
-  const bytes = new Uint8Array(len);
-  for (let i=0;i<len;i++) bytes[i] = bin.charCodeAt(i);
-  return bytes.buffer;
-}
-function randBytes(n){ const a = new Uint8Array(n); crypto.getRandomValues(a); return a; }
-
-// ========= Key derivation & AES-GCM =========
-async function deriveKey(password, salt, iterations=150000){
-  const keyMat = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey(
-    { name:'PBKDF2', salt, iterations, hash:'SHA-256' },
-    keyMat,
-    { name:'AES-GCM', length:256 },
-    false,
-    ['encrypt','decrypt']
-  );
-}
-async function encryptJSON(obj, password){
-  const salt = randBytes(16);
-  const iv = randBytes(12);
-  const key = await deriveKey(password, salt);
-  const data = enc.encode(JSON.stringify(obj));
-  const ctBuf = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, data);
-  return {
-    v: 1, alg: 'AES-GCM', kdf: 'PBKDF2', iters: 150000,
-    salt: ab2b64(salt), iv: ab2b64(iv), ct: ab2b64(ctBuf)
-  };
-}
-async function decryptJSON(payload, password){
-  const { salt, iv, ct, iters=150000 } = payload;
-  const key = await deriveKey(password, new Uint8Array(b642ab(salt)), iters);
-  const ptBuf = await crypto.subtle.decrypt(
-    { name:'AES-GCM', iv: new Uint8Array(b642ab(iv)) },
-    key,
-    b642ab(ct)
-  );
-  const txt = dec.decode(ptBuf);
-  return JSON.parse(txt);
-}
-
-// ========= Storage helpers =========
-let sessionPassword = null;
-
-function setEncStatus(){
-  const el = document.getElementById('encStatus');
-  const hasEnc = !!localStorage.getItem(LS_ENC_KEY);
-  el.textContent = `암호화: ${sessionPassword ? '켜짐' : '꺼짐'}${hasEnc ? ' · 암호 데이터 존재' : ''}`;
-}
-
-function getAllPlain(){
-  try { return JSON.parse(localStorage.getItem(LS_PLAIN_KEY)) || []; }
+function getAll() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; }
   catch { return []; }
 }
-function setAllPlain(arr){
-  localStorage.setItem(LS_PLAIN_KEY, JSON.stringify(arr));
+function setAll(arr) {
+  localStorage.setItem(LS_KEY, JSON.stringify(arr));
 }
 
-async function getAllSecure(){
-  // 우선 암호화 저장이 있으면 우선
-  const encStr = localStorage.getItem(LS_ENC_KEY);
-  if (encStr){
-    if (!sessionPassword) return []; // 잠금 해제 필요
-    try {
-      const payload = JSON.parse(encStr);
-      return await decryptJSON(payload, sessionPassword);
-    } catch(e){
-      alert('암호화된 데이터를 해독하지 못했습니다. 암호를 확인하세요.');
-      return [];
-    }
-  }
-  // 없으면 평문에서 로드
-  return getAllPlain();
-}
-
-async function setAllSecure(arr){
-  if (sessionPassword){
-    const payload = await encryptJSON(arr, sessionPassword);
-    localStorage.setItem(LS_ENC_KEY, JSON.stringify(payload));
-    localStorage.removeItem(LS_PLAIN_KEY); // 평문 제거
-  } else {
-    setAllPlain(arr);
-    localStorage.removeItem(LS_ENC_KEY); // 암호 데이터 제거(선택)
-  }
-  setEncStatus();
-}
-
-// ========= Form helpers =========
 function formData() {
   const f = document.getElementById('recordForm');
   const data = {};
@@ -205,6 +97,7 @@ function formData() {
   });
   return data;
 }
+
 function fillForm(d) {
   const f = document.getElementById('recordForm');
   [...f.elements].forEach(e=>{
@@ -212,161 +105,91 @@ function fillForm(d) {
   });
 }
 
-// ========= UI: Lock/Unlock =========
-const pwdEl = document.getElementById('pwd');
-document.getElementById('lockBtn').addEventListener('click', async ()=>{
-  if (sessionPassword){
-    // unlock off
-    sessionPassword = null;
-    alert('세션 암호 해제(평문 저장 모드).');
-  } else {
-    const val = pwdEl.value || '';
-    if (!val) { alert('세션 암호를 입력하세요.'); return; }
-    sessionPassword = val;
-    alert('세션 암호 설정(암호화 저장 모드).');
+document.getElementById('exportBtn').addEventListener('click', async ()=>{
+  const data = getAll();
+  const json = JSON.stringify(data, null, 2);
+
+  // 지원 시: 사용자가 저장 위치/파일명을 직접 선택
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'schoolRecordBook.json',
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(new Blob([json], { type: 'application/json' }));
+      await writable.close();
+      alert('저장 완료');
+      return;
+    } catch (e) {
+      if (e.name !== 'AbortError') console.warn('Save picker error:', e);
+      // 취소 또는 오류 시 아래 기본 다운로드로 폴백
+    }
   }
-  setEncStatus();
+
+  // 폴백: 기본 다운로드 폴더로 저장
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'schoolRecordBook.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
 });
 
-// ========= Actions =========
-document.getElementById('saveBtn').addEventListener('click', async ()=>{
+document.getElementById('saveBtn').addEventListener('click', ()=>{
   const d = formData();
   if (!d.studentId) { alert('학생번호 필요'); return; }
-  const arr = await getAllSecure();
+  const arr = getAll();
   const idx = arr.findIndex(x=>x.studentId===d.studentId);
   if (idx>=0) arr[idx]=d; else arr.push(d);
-  await setAllSecure(arr);
+  setAll(arr);
   alert('저장 완료');
 });
 
-document.getElementById('loadBtn').addEventListener('click', async ()=>{
+document.getElementById('loadBtn').addEventListener('click', ()=>{
   const id = prompt('불러올 학생번호?');
   if (!id) return;
-  const arr = await getAllSecure();
-  const found = arr.find(x=>x.studentId===id);
-  if (!found) { alert('해당 학생번호 없음 또는 잠금 해제 필요'); return; }
+  const found = getAll().find(x=>x.studentId===id);
+  if (!found) { alert('해당 학생번호 없음'); return; }
   fillForm(found);
 });
 
 document.getElementById('clearBtn').addEventListener('click', ()=>{
   if (!confirm('모든 로컬 저장 기록 삭제?')) return;
-  localStorage.removeItem(LS_PLAIN_KEY);
-  localStorage.removeItem(LS_ENC_KEY);
+  localStorage.removeItem(LS_KEY);
   alert('초기화 완료');
-  setEncStatus();
+});
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const data = getAll();
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'schoolRecordBook.json';
+  a.click();
+});
+
+document.getElementById('importBtn').addEventListener('click', ()=>{
+  document.getElementById('importFile').click();
+});
+document.getElementById('importFile').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const arr = JSON.parse(reader.result);
+      if (!Array.isArray(arr)) { alert('배열 JSON 필요'); return; }
+      setAll(arr);
+      alert('가져오기 완료');
+    } catch {
+      alert('JSON 파싱 오류');
+    }
+  };
+  reader.readAsText(file,'utf-8');
 });
 
 document.getElementById('printBtn').addEventListener('click', ()=>window.print());
-
-// ========= Export: JSON (평문 또는 암호 JSON) =========
-async function saveBlobWithPicker(blob, suggestedName){
-  if (window.showSaveFilePicker){
-    try{
-      const handle = await window.showSaveFilePicker({
-        suggestedName,
-        types: [{ description:'파일', accept: { [blob.type||'application/octet-stream']: ['.'+suggestedName.split('.').pop()] } }]
-      });
-      const w = await handle.createWritable(); await w.write(blob); await w.close();
-      alert('저장 완료');
-      return;
-    }catch(e){ if (e.name !== 'AbortError') console.warn(e); }
-  }
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = suggestedName; a.click();
-  URL.revokeObjectURL(url);
-}
-document.getElementById('exportBtn').addEventListener('click', async ()=>{
-  const arr = await getAllSecure(); // 잠금 해제 필요 시 빈 배열
-  if (!arr.length){
-    const hasEnc = !!localStorage.getItem(LS_ENC_KEY);
-    if (hasEnc && !sessionPassword){ alert('암호 데이터를 내보내려면 먼저 세션 암호로 잠금 해제하세요.'); return; }
-  }
-  if (sessionPassword){
-    // 암호 JSON로 내보내기
-    const payload = await encryptJSON(arr, sessionPassword);
-    await saveBlobWithPicker(
-      new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),
-      'schoolRecordBook.encrypted.json'
-    );
-  } else {
-    // 평문 JSON
-    await saveBlobWithPicker(
-      new Blob([JSON.stringify(arr,null,2)],{type:'application/json'}),
-      'schoolRecordBook.json'
-    );
-  }
-});
-
-// ========= Export: 암호 ZIP =========
-document.getElementById('exportZipBtn').addEventListener('click', async ()=>{
-  const arr = await getAllSecure();
-  if (!arr.length){
-    const hasEnc = !!localStorage.getItem(LS_ENC_KEY);
-    if (hasEnc && !sessionPassword){ alert('암호 데이터를 내보내려면 먼저 세션 암호로 잠금 해제하세요.'); return; }
-  }
-  // ZIP 암호: 세션 암호 사용 또는 즉시 입력
-  let pass = sessionPassword;
-  if (!pass){
-    pass = prompt('ZIP 비밀번호를 입력하세요(분실 시 복원 불가):') || '';
-    if (!pass) { alert('취소됨'); return; }
-  }
-  const jsonText = JSON.stringify(arr, null, 2);
-  const writer = new zip.ZipWriter(new zip.BlobWriter('application/zip'), { password: pass });
-  await writer.add('schoolRecordBook.json', new zip.TextReader(jsonText));
-  const zipBlob = await writer.close();
-  await saveBlobWithPicker(zipBlob, 'schoolRecordBook.zip');
-});
-
-// ========= Import(JSON/ZIP) =========
-document.getElementById('importBtn').addEventListener('click', ()=>{
-  document.getElementById('importFile').value = '';
-  document.getElementById('importFile').click();
-});
-document.getElementById('importFile').addEventListener('change', async (e)=>{
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  try{
-    if (file.name.toLowerCase().endsWith('.zip')){
-      // ZIP 불러오기(암호 가능)
-      let pass = prompt('ZIP 비밀번호가 있으면 입력(없으면 빈칸):') || '';
-      const reader = new zip.ZipReader(new zip.BlobReader(file), pass ? { password: pass } : {});
-      const entries = await reader.getEntries();
-      if (!entries.length) throw new Error('ZIP에 파일이 없습니다.');
-      const first = entries[0];
-      const text = await first.getData(new zip.TextWriter());
-      await reader.close();
-      const arr = JSON.parse(text);
-      if (!Array.isArray(arr)) throw new Error('JSON 배열이 필요합니다.');
-      await setAllSecure(arr);
-      alert('ZIP 가져오기 완료');
-      return;
-    }
-    // JSON
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)){
-      await setAllSecure(parsed);
-      alert('JSON 가져오기 완료');
-    } else if (parsed && parsed.ct && parsed.salt && parsed.iv){
-      // 암호 JSON
-      const pass = sessionPassword || prompt('암호 JSON 복호화용 비밀번호:') || '';
-      if (!pass) { alert('취소됨'); return; }
-      const arr = await decryptJSON(parsed, pass);
-      if (!Array.isArray(arr)) throw new Error('복호화 결과가 배열이 아닙니다.');
-      // 세션 암호가 이미 있으면 암호화 저장, 없으면 평문 저장
-      await setAllSecure(arr);
-      alert('암호 JSON 가져오기 완료');
-    } else {
-      alert('지원하지 않는 JSON 형식입니다.');
-    }
-  }catch(err){
-    console.error(err);
-    alert('가져오기 실패: ' + (err && err.message ? err.message : '오류'));
-  }
-});
-
-// ========= Init =========
-setEncStatus();
 </script>
 </body>
 </html>
