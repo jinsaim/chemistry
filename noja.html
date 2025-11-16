@@ -14,7 +14,7 @@
     .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
     .panel h3 { margin: 0; padding: 10px 12px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
     .panel .body { padding: 12px; }
-    .list { max-height: calc(100dvh - 160px); overflow: auto; }
+    .list { max-height: calc(100dvh - 220px); overflow: auto; } /* 높이 약간 줄임 */
     .list-item { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
     .list-item:hover { background: #f9fafb; }
     .list-item.active { background: #eef2ff; }
@@ -56,6 +56,17 @@
           <button id="delBtn" class="danger">선택 장 삭제</button>
         </div>
         <div id="chapterList" class="list"></div>
+
+        <!-- 동기화 섹션 -->
+        <div class="sec">
+          <div class="muted">동기화(GitHub)</div>
+          <div class="row">
+            <button id="remoteLoadBtn">원격 불러오기</button>
+            <button id="remoteSaveBtn">원격 저장</button>
+            <button id="tokenBtn">토큰</button>
+          </div>
+          <div class="muted" id="remoteInfo">읽기는 공개, 저장은 토큰 필요</div>
+        </div>
       </div>
     </div>
 
@@ -121,9 +132,21 @@
       comments: 'ddj_comments_v1' // { [chapNo]: Comment[] }
     };
 
+    // GitHub 동기화 설정
+    const GH = {
+      owner: 'jinsaim',
+      repo: 'jinsaim.github.io',
+      branch: 'main',
+      pathChapters: 'chemistry/ddj_chapters.json',
+      pathComments: 'chemistry/ddj_comments.json'
+    };
+    const GH_TOKEN_KEY = 'ddj_github_token';
+
     // 유틸
     const esc = s => (s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const nowISO = () => new Date().toISOString().replace('T',' ').slice(0,19);
+    const b64 = txt => btoa(unescape(encodeURIComponent(txt)));
+    const fromB64 = b64s => decodeURIComponent(escape(atob(b64s)));
 
     // 상태
     let chapters = loadChapters();
@@ -140,6 +163,80 @@
       catch { return {}; }
     }
     function saveComments(){ localStorage.setItem(KS.comments, JSON.stringify(comments)); }
+
+    // ========== GitHub API helpers ==========
+    const ghHeaders = (token) => token ? { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json' } : { 'Accept': 'application/vnd.github+json' };
+    async function ghGetContent(path, ref = GH.branch){
+      const url = `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`;
+      const res = await fetch(url, { headers: ghHeaders(localStorage.getItem(GH_TOKEN_KEY) || '') });
+      if (res.status === 404) return { sha: null, text: null };
+      if (!res.ok) throw new Error('GitHub GET 실패: ' + res.status);
+      const json = await res.json();
+      if (json.type !== 'file') throw new Error('파일이 아님');
+      const text = fromB64(json.content);
+      return { sha: json.sha, text };
+    }
+    async function ghPutContent(path, text, message){
+      const token = localStorage.getItem(GH_TOKEN_KEY) || '';
+      if (!token) { alert('토큰이 필요합니다. 좌측 “토큰” 버튼으로 저장하세요.'); throw new Error('no token'); }
+      // 먼저 현재 sha 조회(없으면 신규 생성)
+      let sha = null;
+      try {
+        const cur = await ghGetContent(path, GH.branch);
+        sha = cur.sha;
+      } catch (e) { /* ignore */ }
+      const url = `https://api.github.com/repos/${GH.owner}/${GH.repo}/contents/${encodeURIComponent(path)}`;
+      const body = {
+        message,
+        branch: GH.branch,
+        content: b64(text),
+        sha: sha || undefined
+      };
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(()=> '');
+        throw new Error('GitHub PUT 실패: ' + res.status + ' ' + t);
+      }
+      return res.json();
+    }
+
+    async function remoteLoad(){
+      try{
+        // chapters
+        const ch = await ghGetContent(GH.pathChapters, GH.branch);
+        if (ch.text){
+          chapters = JSON.parse(ch.text);
+          saveChapters();
+        }
+        // comments
+        const cm = await ghGetContent(GH.pathComments, GH.branch);
+        if (cm.text){
+          comments = JSON.parse(cm.text);
+          saveComments();
+        }
+        renderList(document.getElementById('search').value);
+        if (chapters.length) selectChapter(chapters.sort((a,b)=> Number(a.no)-Number(b.no))[0].no);
+        alert('원격 불러오기 완료');
+      }catch(e){
+        console.error(e);
+        alert('원격 불러오기 실패: ' + e.message);
+      }
+    }
+    async function remoteSave(){
+      try{
+        const msg = `chore(ddj): sync data ${nowISO()}`;
+        await ghPutContent(GH.pathChapters, JSON.stringify(chapters, null, 2), msg);
+        await ghPutContent(GH.pathComments, JSON.stringify(comments, null, 2), msg);
+        alert('원격 저장 완료');
+      }catch(e){
+        console.error(e);
+        alert('원격 저장 실패: ' + e.message);
+      }
+    }
 
     // 장 목록 렌더
     function renderList(filter=''){
@@ -343,12 +440,25 @@
       document.getElementById('cmtContent').value = '';
     });
 
+    // 동기화 버튼
+    document.getElementById('remoteLoadBtn').addEventListener('click', remoteLoad);
+    document.getElementById('remoteSaveBtn').addEventListener('click', remoteSave);
+    document.getElementById('tokenBtn').addEventListener('click', ()=>{
+      const cur = localStorage.getItem(GH_TOKEN_KEY) || '';
+      const val = prompt('GitHub Personal Access Token 입력/수정(비워두면 삭제):', cur);
+      if (val === null) return;
+      if (val.trim()) localStorage.setItem(GH_TOKEN_KEY, val.trim());
+      else localStorage.removeItem(GH_TOKEN_KEY);
+      document.getElementById('remoteInfo').textContent =
+        (localStorage.getItem(GH_TOKEN_KEY) ? '토큰 저장됨 · 저장 가능' : '읽기는 공개, 저장은 토큰 필요');
+      alert('토큰 상태가 업데이트되었습니다.');
+    });
+
     // 초기화
     renderList();
     if (chapters.length) {
       selectChapter(chapters.sort((a,b)=> Number(a.no)-Number(b.no))[0].no);
     } else {
-      // 1장 자동 준비
       document.getElementById('chapNo').value = 1;
       updatePreview();
     }
