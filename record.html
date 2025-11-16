@@ -40,9 +40,12 @@ button.danger{background:#dc2626;}
       </label>
     </section>
 
-    <h2>특기사항 / 행동특성</h2>
+    <h2>특기사항</h2>
     <section style="grid-template-columns:1fr;">
-      <label>행동특성 및 종합의견
+      <label>교과특성
+        <textarea name="subject"></textarea>
+      </label>
+      <label>행동특성
         <textarea name="behavior"></textarea>
       </label>
       <label>창의적 체험활동(요약)
@@ -101,6 +104,37 @@ function fillForm(d) {
     if (e.name && d[e.name] !== undefined) e.value = d[e.name];
   });
 }
+
+document.getElementById('exportBtn').addEventListener('click', async ()=>{
+  const data = getAll();
+  const json = JSON.stringify(data, null, 2);
+
+  // 지원 시: 사용자가 저장 위치/파일명을 직접 선택
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'schoolRecordBook.json',
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(new Blob([json], { type: 'application/json' }));
+      await writable.close();
+      alert('저장 완료');
+      return;
+    } catch (e) {
+      if (e.name !== 'AbortError') console.warn('Save picker error:', e);
+      // 취소 또는 오류 시 아래 기본 다운로드로 폴백
+    }
+  }
+
+  // 폴백: 기본 다운로드 폴더로 저장
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'schoolRecordBook.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
 
 document.getElementById('saveBtn').addEventListener('click', ()=>{
   const d = formData();
