@@ -7,7 +7,7 @@
 <style>
 body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#f8fafc;}
 header{padding:12px 20px;background:#1e293b;color:#fff;}
-main{padding:16px;max-width:1000px;margin:auto;}
+main{padding:16px;max-width:900px;margin:auto;}
 h2{margin-top:32px;border-bottom:1px solid #cbd5e1;padding-bottom:4px;font-size:18px;}
 form section{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
 label{display:flex;flex-direction:column;font-size:13px;color:#334155;gap:4px;}
@@ -17,9 +17,6 @@ textarea{min-height:80px;resize:vertical;}
 button{cursor:pointer;background:#2563eb;color:#fff;border:0;padding:8px 14px;font-size:14px;border-radius:4px;}
 button.secondary{background:#475569;}
 button.danger{background:#dc2626;}
-table{border-collapse:collapse;width:100%;margin-top:12px;font-size:13px;}
-table th,table td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;}
-.badge{display:inline-block;background:#0f172a;color:#fff;font-size:11px;padding:2px 6px;border-radius:4px;margin-left:6px;}
 .notice{font-size:12px;color:#64748b;margin-top:4px;}
 @media print{
   header,#actions,.notice,.importExport{display:none;}
@@ -41,61 +38,6 @@ table th,table td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;}
       <label>학생번호
         <input name="studentId" required>
       </label>
-      <label>이름
-        <input name="name" required>
-      </label>
-      <label>학년
-        <select name="grade">
-          <option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option>
-        </select>
-      </label>
-      <label>반
-        <input name="class" required>
-      </label>
-      <label>생년월일(YYYY-MM-DD)
-        <input name="birth" pattern="\\d{4}-\\d{2}-\\d{2}">
-      </label>
-      <label>주소(선택)
-        <textarea name="address" placeholder="보안 필요시 미입력 또는 별도 암호화 저장 권장"></textarea>
-      </label>
-    </section>
-
-    <h2>출결</h2>
-    <section>
-      <label>결석
-        <input name="absence" type="number" min="0" value="0">
-      </label>
-      <label>지각
-        <input name="late" type="number" min="0" value="0">
-      </label>
-      <label>조퇴
-        <input name="earlyLeave" type="number" min="0" value="0">
-      </label>
-      <label>결과
-        <input name="absenceExcused" type="number" min="0" value="0">
-      </label>
-    </section>
-
-    <h2>교과 성취(요약)</h2>
-    <section>
-      <label>국어
-        <input name="kor">
-      </label>
-      <label>영어
-        <input name="eng">
-      </label>
-      <label>수학
-        <input name="math">
-      </label>
-      <label>과학
-        <input name="science">
-      </label>
-      <label>사회
-        <input name="social">
-      </label>
-      <label>체육
-        <input name="pe">
-      </label>
     </section>
 
     <h2>특기사항 / 행동특성</h2>
@@ -111,14 +53,8 @@ table th,table td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;}
       </label>
     </section>
 
-    <h2>수상 / 봉사 / 기타</h2>
+    <h2>기타</h2>
     <section style="grid-template-columns:1fr;">
-      <label>수상경력(요약)
-        <textarea name="awards"></textarea>
-      </label>
-      <label>봉사활동(시간, 내용 요약)
-        <textarea name="volunteer"></textarea>
-      </label>
       <label>기타 사항
         <textarea name="extra"></textarea>
       </label>
@@ -136,25 +72,14 @@ table th,table td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;}
       <button class="secondary" id="importBtn">JSON 가져오기</button>
     </div>
   </div>
-
-  <h2>저장된 기록 목록</h2>
-  <table id="listTable">
-    <thead>
-      <tr>
-        <th>학생번호</th><th>이름</th><th>학년</th><th>반</th><th>국어</th><th>영어</th><th>수정</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
 </main>
 
 <script>
 const LS_KEY = 'schoolRecordBook_v1';
 
 function getAll() {
-  try {
-    return JSON.parse(localStorage.getItem(LS_KEY)) || [];
-  } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || []; }
+  catch { return []; }
 }
 function setAll(arr) {
   localStorage.setItem(LS_KEY, JSON.stringify(arr));
@@ -165,7 +90,7 @@ function formData() {
   const data = {};
   [...f.elements].forEach(e=>{
     if (!e.name) return;
-    data[e.name] = e.value.trim();
+    data[e.name] = (e.value || '').trim();
   });
   return data;
 }
@@ -177,49 +102,28 @@ function fillForm(d) {
   });
 }
 
-function renderList() {
-  const arr = getAll();
-  const tb = document.querySelector('#listTable tbody');
-  tb.innerHTML = '';
-  arr.forEach((r,i)=>{
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.studentId||''}</td>
-      <td>${r.name||''}</td>
-      <td>${r.grade||''}</td>
-      <td>${r.class||''}</td>
-      <td>${r.kor||''}</td>
-      <td>${r.eng||''}</td>
-      <td><button data-idx="${i}" class="editBtn" style="padding:4px 8px;font-size:12px;">불러오기</button></td>
-    `;
-    tb.appendChild(tr);
-  });
-}
-
 document.getElementById('saveBtn').addEventListener('click', ()=>{
   const d = formData();
   if (!d.studentId) { alert('학생번호 필요'); return; }
-  let arr = getAll();
+  const arr = getAll();
   const idx = arr.findIndex(x=>x.studentId===d.studentId);
   if (idx>=0) arr[idx]=d; else arr.push(d);
   setAll(arr);
-  renderList();
   alert('저장 완료');
 });
 
 document.getElementById('loadBtn').addEventListener('click', ()=>{
   const id = prompt('불러올 학생번호?');
   if (!id) return;
-  const arr = getAll();
-  const found = arr.find(x=>x.studentId===id);
-  if (!found) { alert('없음'); return; }
+  const found = getAll().find(x=>x.studentId===id);
+  if (!found) { alert('해당 학생번호 없음'); return; }
   fillForm(found);
 });
 
 document.getElementById('clearBtn').addEventListener('click', ()=>{
   if (!confirm('모든 로컬 저장 기록 삭제?')) return;
   localStorage.removeItem(LS_KEY);
-  renderList();
+  alert('초기화 완료');
 });
 
 document.getElementById('exportBtn').addEventListener('click', ()=>{
@@ -243,7 +147,6 @@ document.getElementById('importFile').addEventListener('change', e=>{
       const arr = JSON.parse(reader.result);
       if (!Array.isArray(arr)) { alert('배열 JSON 필요'); return; }
       setAll(arr);
-      renderList();
       alert('가져오기 완료');
     } catch {
       alert('JSON 파싱 오류');
@@ -253,17 +156,6 @@ document.getElementById('importFile').addEventListener('change', e=>{
 });
 
 document.getElementById('printBtn').addEventListener('click', ()=>window.print());
-
-document.querySelector('#listTable').addEventListener('click', e=>{
-  if (e.target.classList.contains('editBtn')) {
-    const idx = +e.target.dataset.idx;
-    const arr = getAll();
-    const r = arr[idx];
-    if (r) fillForm(r);
-  }
-});
-
-renderList();
 </script>
 </body>
 </html>
